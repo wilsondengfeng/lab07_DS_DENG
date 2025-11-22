@@ -1,0 +1,51 @@
+services:
+  clientes-app:
+    build:
+      context: ../clientes
+    ports:
+      - "5001:5001"
+    environment:
+      SPRING_DATASOURCE_URL: ${CLIENTES_DB_URL:-jdbc:postgresql://host.docker.internal:5432/lab07_cliente}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-7839}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  productos-app:
+    build:
+      context: ../productos
+    ports:
+      - "6001:6001"
+    environment:
+      SPRING_DATASOURCE_URL: ${PRODUCTOS_DB_URL:-jdbc:postgresql://host.docker.internal:5432/lab07_productos}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-7839}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  proveedores-app:
+    build:
+      context: ../proveedores
+    ports:
+      - "7001:7001"
+    environment:
+      SPRING_DATASOURCE_URL: ${PROVEEDORES_DB_URL:-jdbc:postgresql://host.docker.internal:5432/lab07_proveedores}
+      SPRING_DATASOURCE_USERNAME: ${DB_USERNAME:-postgres}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-7839}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    depends_on:
+      - clientes-app
+      - productos-app
+      - proveedores-app
+    ports:
+      - "7000:7000"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped

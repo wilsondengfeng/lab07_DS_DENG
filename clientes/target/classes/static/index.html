@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Clientes</title>
+    <base href="/clientes/">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app">
+    <header>
+        <h1>Gestor de Clientes</h1>
+        <p>Mantén tu cartera actualizada desde esta consola visual.</p>
+    </header>
+
+    <section class="stats">
+        <div class="stat-card">
+            <span>Total Clientes</span>
+            <strong id="totalClientes">0</strong>
+        </div>
+        <div class="stat-card">
+            <span>Última actualización</span>
+            <strong id="ultimaActualizacion">-</strong>
+        </div>
+    </section>
+
+    <section class="form-card">
+        <h2 id="formTitle">Registrar cliente</h2>
+        <p id="formSubtitle">Completa el formulario para agregar un nuevo cliente.</p>
+        <form id="clienteForm">
+            <input type="hidden" id="clienteId">
+            <div class="form-grid">
+                <label>
+                    Documento
+                    <input type="text" id="documento" maxlength="20" required>
+                </label>
+                <label>
+                    Nombre completo
+                    <input type="text" id="nombreCompleto" maxlength="120" required>
+                </label>
+                <label>
+                    Email
+                    <input type="email" id="email" maxlength="120" required>
+                </label>
+                <label>
+                    Teléfono
+                    <input type="text" id="telefono" maxlength="30" required>
+                </label>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn-primary" id="guardarCliente">Registrar cliente</button>
+                <button type="button" class="btn-secondary hidden" id="cancelarEdicion">Cancelar edición</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="table-wrapper">
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Documento</th>
+                <th>Nombre</th>
+                <th>Email</th>
+                <th>Teléfono</th>
+                <th>Acciones</th>
+            </tr>
+            </thead>
+            <tbody id="clientesBody">
+            <tr>
+                <td colspan="6" class="empty">Cargando clientes...</td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<script>
+const body = document.getElementById('clientesBody');
+const totalClientes = document.getElementById('totalClientes');
+const ultimaActualizacion = document.getElementById('ultimaActualizacion');
+const form = document.getElementById('clienteForm');
+const formTitle = document.getElementById('formTitle');
+const formSubtitle = document.getElementById('formSubtitle');
+const guardarBtn = document.getElementById('guardarCliente');
+const cancelarBtn = document.getElementById('cancelarEdicion');
+const inputs = {
+    documento: document.getElementById('documento'),
+    nombreCompleto: document.getElementById('nombreCompleto'),
+    email: document.getElementById('email'),
+    telefono: document.getElementById('telefono')
+};
+
+let clientesCache = [];
+let editId = null;
+
+async function cargarClientes() {
+    try {
+        const resp = await fetch('/api/clientes');
+        if (!resp.ok) throw new Error('Error al solicitar clientes');
+        clientesCache = await resp.json();
+        totalClientes.textContent = clientesCache.length;
+        ultimaActualizacion.textContent = new Date().toLocaleString();
+        renderClientes();
+    } catch (error) {
+        body.innerHTML = `<tr><td colspan="6" class="empty error">${error.message}</td></tr>`;
+    }
+}
+
+function renderClientes() {
+    if (clientesCache.length === 0) {
+        body.innerHTML = '<tr><td colspan="6" class="empty">Aún no hay registros</td></tr>';
+        return;
+    }
+
+    body.innerHTML = clientesCache.map((c) => `
+        <tr>
+            <td><span class="badge">${c.id ?? '-'}</span></td>
+            <td>${c.documento}</td>
+            <td>${c.nombreCompleto}</td>
+            <td>${c.email}</td>
+            <td>${c.telefono}</td>
+            <td class="actions-cell">
+                <button class="btn-link" data-action="edit" data-id="${c.id}">Editar</button>
+                <button class="btn-danger" data-action="delete" data-id="${c.id}">Eliminar</button>
+            </td>
+        </tr>`).join('');
+}
+
+function resetForm() {
+    form.reset();
+    editId = null;
+    formTitle.textContent = 'Registrar cliente';
+    formSubtitle.textContent = 'Completa el formulario para agregar un nuevo cliente.';
+    guardarBtn.textContent = 'Registrar cliente';
+    cancelarBtn.classList.add('hidden');
+}
+
+function setEditMode(cliente) {
+    editId = cliente.id;
+    inputs.documento.value = cliente.documento;
+    inputs.nombreCompleto.value = cliente.nombreCompleto;
+    inputs.email.value = cliente.email;
+    inputs.telefono.value = cliente.telefono;
+    formTitle.textContent = 'Editar cliente #' + cliente.id;
+    formSubtitle.textContent = 'Modifica los datos y guarda los cambios.';
+    guardarBtn.textContent = 'Guardar cambios';
+    cancelarBtn.classList.remove('hidden');
+}
+
+form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payload = {
+        documento: inputs.documento.value.trim(),
+        nombreCompleto: inputs.nombreCompleto.value.trim(),
+        email: inputs.email.value.trim(),
+        telefono: inputs.telefono.value.trim()
+    };
+
+    const url = editId ? `/api/clientes/${editId}` : '/api/clientes';
+    const method = editId ? 'PUT' : 'POST';
+
+    try {
+        const resp = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(errText || 'No se pudo guardar');
+        }
+        resetForm();
+        await cargarClientes();
+    } catch (error) {
+        alert(error.message);
+    }
+});
+
+cancelarBtn.addEventListener('click', () => {
+    resetForm();
+});
+
+body.addEventListener('click', async (event) => {
+    const btn = event.target.closest('button[data-action]');
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    const cliente = clientesCache.find((c) => c.id === id);
+    if (!cliente) return;
+
+    if (btn.dataset.action === 'edit') {
+        setEditMode(cliente);
+    } else if (btn.dataset.action === 'delete') {
+        if (!confirm('¿Eliminar este cliente?')) return;
+        try {
+            const resp = await fetch(`/api/clientes/${id}`, { method: 'DELETE' });
+            if (!resp.ok) throw new Error('No se pudo eliminar');
+            resetForm();
+            await cargarClientes();
+        } catch (error) {
+            alert(error.message);
+        }
+    }
+});
+
+cargarClientes();
+setInterval(cargarClientes, 15000);
+</script>
+</body>
+</html>

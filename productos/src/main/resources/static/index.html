@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inventario de Productos</title>
+    <base href="/productos/">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app">
+    <header>
+        <h1>Inventario con estilo neón</h1>
+        <p>Consulta y edita los productos registrados en la API REST.</p>
+        <button id="refrescar">Actualizar ahora</button>
+    </header>
+
+    <section class="grid">
+        <article class="card">
+            <span>Productos disponibles</span>
+            <strong id="totalProductos">0</strong>
+        </article>
+        <article class="card">
+            <span>Categorías únicas</span>
+            <strong id="totalCategorias">0</strong>
+        </article>
+        <article class="card">
+            <span>Promedio de precios</span>
+            <strong id="promedioPrecio">S/ 0.00</strong>
+        </article>
+    </section>
+
+    <section class="crud-panel">
+        <h2 id="productoTitulo">Registrar producto</h2>
+        <p id="productoSubtitulo">Llena los campos para agregar un nuevo producto.</p>
+        <form id="productoForm">
+            <input type="hidden" id="productoId">
+            <div class="crud-grid">
+                <label>
+                    Código
+                    <input type="text" id="codigo" maxlength="30" required>
+                </label>
+                <label>
+                    Nombre
+                    <input type="text" id="nombre" maxlength="120" required>
+                </label>
+                <label>
+                    Categoría
+                    <input type="text" id="categoria" maxlength="80" required>
+                </label>
+                <label>
+                    Precio (S/)
+                    <input type="number" step="0.01" min="0.01" id="precio" required>
+                </label>
+            </div>
+            <div class="crud-actions">
+                <button type="submit" class="btn-gradient" id="guardarProducto">Registrar producto</button>
+                <button type="button" class="btn-outline hidden" id="cancelarProducto">Cancelar edición</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="table-wrapper">
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Código</th>
+                <th>Nombre</th>
+                <th>Categoría</th>
+                <th>Precio</th>
+                <th>Acciones</th>
+            </tr>
+            </thead>
+            <tbody id="productosBody">
+            <tr>
+                <td colspan="6" class="empty">Esperando datos...</td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<script>
+const body = document.getElementById('productosBody');
+const totalProductos = document.getElementById('totalProductos');
+const totalCategorias = document.getElementById('totalCategorias');
+const promedioPrecio = document.getElementById('promedioPrecio');
+const form = document.getElementById('productoForm');
+const titulo = document.getElementById('productoTitulo');
+const subtitulo = document.getElementById('productoSubtitulo');
+const guardarBtn = document.getElementById('guardarProducto');
+const cancelarBtn = document.getElementById('cancelarProducto');
+const inputs = {
+    codigo: document.getElementById('codigo'),
+    nombre: document.getElementById('nombre'),
+    categoria: document.getElementById('categoria'),
+    precio: document.getElementById('precio')
+};
+
+let productosCache = [];
+let editId = null;
+
+async function cargarProductos() {
+    try {
+        const response = await fetch('/api/productos');
+        if (!response.ok) throw new Error('No pude leer los productos');
+        productosCache = await response.json();
+        totalProductos.textContent = productosCache.length;
+        totalCategorias.textContent = new Set(productosCache.map((p) => p.categoria)).size;
+        const promedio = productosCache.reduce((acc, p) => acc + Number(p.precio || 0), 0) / (productosCache.length || 1);
+        promedioPrecio.textContent = `S/ ${promedio.toFixed(2)}`;
+        renderProductos();
+    } catch (error) {
+        body.innerHTML = `<tr><td colspan="6" class="empty error">${error.message}</td></tr>`;
+    }
+}
+
+function renderProductos() {
+    if (productosCache.length === 0) {
+        body.innerHTML = '<tr><td colspan="6" class="empty">Aún no hay registros</td></tr>';
+        return;
+    }
+
+    const currency = new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN' });
+
+    body.innerHTML = productosCache.map((p) => `
+        <tr>
+            <td><span class="pill">${p.id ?? '-'}</span></td>
+            <td>${p.codigo}</td>
+            <td>${p.nombre}</td>
+            <td>${p.categoria}</td>
+            <td>${currency.format(Number(p.precio))}</td>
+            <td class="actions-cell">
+                <button class="btn-link" data-action="edit" data-id="${p.id}">Editar</button>
+                <button class="btn-danger" data-action="delete" data-id="${p.id}">Eliminar</button>
+            </td>
+        </tr>`).join('');
+}
+
+function resetForm() {
+    form.reset();
+    editId = null;
+    titulo.textContent = 'Registrar producto';
+    subtitulo.textContent = 'Llena los campos para agregar un nuevo producto.';
+    guardarBtn.textContent = 'Registrar producto';
+    cancelarBtn.classList.add('hidden');
+}
+
+function setEditMode(producto) {
+    editId = producto.id;
+    inputs.codigo.value = producto.codigo;
+    inputs.nombre.value = producto.nombre;
+    inputs.categoria.value = producto.categoria;
+    inputs.precio.value = Number(producto.precio);
+    titulo.textContent = `Editar producto #${producto.id}`;
+    subtitulo.textContent = 'Actualiza la información y guarda los cambios.';
+    guardarBtn.textContent = 'Guardar cambios';
+    cancelarBtn.classList.remove('hidden');
+}
+
+form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payload = {
+        codigo: inputs.codigo.value.trim(),
+        nombre: inputs.nombre.value.trim(),
+        categoria: inputs.categoria.value.trim(),
+        precio: Number(inputs.precio.value)
+    };
+
+    const url = editId ? `/api/productos/${editId}` : '/api/productos';
+    const method = editId ? 'PUT' : 'POST';
+
+    try {
+        const resp = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(errText || 'No se pudo guardar');
+        }
+        resetForm();
+        await cargarProductos();
+    } catch (error) {
+        alert(error.message);
+    }
+});
+
+cancelarBtn.addEventListener('click', () => resetForm());
+
+body.addEventListener('click', async (event) => {
+    const btn = event.target.closest('button[data-action]');
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    const producto = productosCache.find((p) => p.id === id);
+    if (!producto) return;
+
+    if (btn.dataset.action === 'edit') {
+        setEditMode(producto);
+    } else if (btn.dataset.action === 'delete') {
+        if (!confirm('¿Eliminar este producto?')) return;
+        try {
+            const resp = await fetch(`/api/productos/${id}`, { method: 'DELETE' });
+            if (!resp.ok) throw new Error('No se pudo eliminar');
+            resetForm();
+            await cargarProductos();
+        } catch (error) {
+            alert(error.message);
+        }
+    }
+});
+
+document.getElementById('refrescar').addEventListener('click', cargarProductos);
+
+cargarProductos();
+setInterval(cargarProductos, 20000);
+</script>
+</body>
+</html>

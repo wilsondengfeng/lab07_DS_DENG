@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Directorio de Proveedores</title>
+    <base href="/proveedores/">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<div class="app">
+    <header>
+        <div>
+            <h1>Directorio dinámico</h1>
+            <p>Consulta la red de proveedores y mantén el contacto a un solo clic.</p>
+        </div>
+        <div class="actions">
+            <button id="recargar">Refrescar</button>
+        </div>
+    </header>
+
+    <section class="cards">
+        <div class="card">
+            <span>Proveedores registrados</span>
+            <strong id="contadorProveedores">0</strong>
+        </div>
+        <div class="card">
+            <span>Correos corporativos únicos</span>
+            <strong id="contadorCorreos">0</strong>
+        </div>
+    </section>
+
+    <section class="crud-panel">
+        <h2 id="proveedorTitulo">Registrar proveedor</h2>
+        <p id="proveedorSubtitulo">Ingresa los datos y guárdalos en la base.</p>
+        <form id="proveedorForm">
+            <input type="hidden" id="proveedorId">
+            <div class="crud-grid">
+                <label>
+                    RUC
+                    <input type="text" id="ruc" maxlength="20" required>
+                </label>
+                <label>
+                    Razón social
+                    <input type="text" id="razonSocial" maxlength="140" required>
+                </label>
+                <label>
+                    Contacto
+                    <input type="text" id="contacto" maxlength="120" required>
+                </label>
+                <label>
+                    Correo
+                    <input type="email" id="correo" maxlength="100" required>
+                </label>
+                <label>
+                    Teléfono
+                    <input type="text" id="telefono" maxlength="30" required>
+                </label>
+            </div>
+            <div class="crud-actions">
+                <button type="submit" class="btn-solid" id="guardarProveedor">Registrar proveedor</button>
+                <button type="button" class="btn-outline hidden" id="cancelarProveedor">Cancelar edición</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="table-wrapper">
+        <table>
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>RUC</th>
+                <th>Razón social</th>
+                <th>Contacto</th>
+                <th>Correo</th>
+                <th>Teléfono</th>
+                <th>Acciones</th>
+            </tr>
+            </thead>
+            <tbody id="proveedoresBody">
+            <tr>
+                <td colspan="7" class="empty">Cargando proveedores...</td>
+            </tr>
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<script>
+const cuerpo = document.getElementById('proveedoresBody');
+const contadorProveedores = document.getElementById('contadorProveedores');
+const contadorCorreos = document.getElementById('contadorCorreos');
+const form = document.getElementById('proveedorForm');
+const titulo = document.getElementById('proveedorTitulo');
+const subtitulo = document.getElementById('proveedorSubtitulo');
+const guardarBtn = document.getElementById('guardarProveedor');
+const cancelarBtn = document.getElementById('cancelarProveedor');
+const inputs = {
+    ruc: document.getElementById('ruc'),
+    razonSocial: document.getElementById('razonSocial'),
+    contacto: document.getElementById('contacto'),
+    correo: document.getElementById('correo'),
+    telefono: document.getElementById('telefono')
+};
+
+let proveedoresCache = [];
+let editId = null;
+
+async function cargarProveedores() {
+    try {
+        const resp = await fetch('/api/proveedores');
+        if (!resp.ok) throw new Error('No se pudo obtener la lista');
+        proveedoresCache = await resp.json();
+        contadorProveedores.textContent = proveedoresCache.length;
+        contadorCorreos.textContent = new Set(proveedoresCache.map((p) => p.correo)).size;
+        renderProveedores();
+    } catch (error) {
+        cuerpo.innerHTML = `<tr><td colspan="7" class="empty error">${error.message}</td></tr>`;
+    }
+}
+
+function renderProveedores() {
+    if (proveedoresCache.length === 0) {
+        cuerpo.innerHTML = '<tr><td colspan="7" class="empty">Aún no hay registros</td></tr>';
+        return;
+    }
+
+    cuerpo.innerHTML = proveedoresCache.map((p) => `
+        <tr>
+            <td><span class="circle">${p.id ?? '-'}</span></td>
+            <td>${p.ruc}</td>
+            <td>${p.razonSocial}</td>
+            <td>${p.contacto}</td>
+            <td><a href="mailto:${p.correo}">${p.correo}</a></td>
+            <td><a href="tel:${p.telefono}">${p.telefono}</a></td>
+            <td class="actions-cell">
+                <button class="btn-link" data-action="edit" data-id="${p.id}">Editar</button>
+                <button class="btn-danger" data-action="delete" data-id="${p.id}">Eliminar</button>
+            </td>
+        </tr>`).join('');
+}
+
+function resetForm() {
+    form.reset();
+    editId = null;
+    titulo.textContent = 'Registrar proveedor';
+    subtitulo.textContent = 'Ingresa los datos y guárdalos en la base.';
+    guardarBtn.textContent = 'Registrar proveedor';
+    cancelarBtn.classList.add('hidden');
+}
+
+function setEditMode(proveedor) {
+    editId = proveedor.id;
+    inputs.ruc.value = proveedor.ruc;
+    inputs.razonSocial.value = proveedor.razonSocial;
+    inputs.contacto.value = proveedor.contacto;
+    inputs.correo.value = proveedor.correo;
+    inputs.telefono.value = proveedor.telefono;
+    titulo.textContent = `Editar proveedor #${proveedor.id}`;
+    subtitulo.textContent = 'Aplica tus cambios y guarda.';
+    guardarBtn.textContent = 'Guardar cambios';
+    cancelarBtn.classList.remove('hidden');
+}
+
+form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payload = {
+        ruc: inputs.ruc.value.trim(),
+        razonSocial: inputs.razonSocial.value.trim(),
+        contacto: inputs.contacto.value.trim(),
+        correo: inputs.correo.value.trim(),
+        telefono: inputs.telefono.value.trim()
+    };
+
+    const url = editId ? `/api/proveedores/${editId}` : '/api/proveedores';
+    const method = editId ? 'PUT' : 'POST';
+
+    try {
+        const resp = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(errText || 'No se pudo guardar');
+        }
+        resetForm();
+        await cargarProveedores();
+    } catch (error) {
+        alert(error.message);
+    }
+});
+
+cancelarBtn.addEventListener('click', () => resetForm());
+
+cuerpo.addEventListener('click', async (event) => {
+    const btn = event.target.closest('button[data-action]');
+    if (!btn) return;
+    const id = Number(btn.dataset.id);
+    const proveedor = proveedoresCache.find((p) => p.id === id);
+    if (!proveedor) return;
+
+    if (btn.dataset.action === 'edit') {
+        setEditMode(proveedor);
+    } else if (btn.dataset.action === 'delete') {
+        if (!confirm('¿Eliminar este proveedor?')) return;
+        try {
+            const resp = await fetch(`/api/proveedores/${id}`, { method: 'DELETE' });
+            if (!resp.ok) throw new Error('No se pudo eliminar');
+            resetForm();
+            await cargarProveedores();
+        } catch (error) {
+            alert(error.message);
+        }
+    }
+});
+
+document.getElementById('recargar').addEventListener('click', cargarProveedores);
+
+cargarProveedores();
+setInterval(cargarProveedores, 25000);
+</script>
+</body>
+</html>
